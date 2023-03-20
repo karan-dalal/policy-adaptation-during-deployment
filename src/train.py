@@ -54,9 +54,11 @@ def main(args):
 		capacity=args.train_steps,
 		batch_size=args.batch_size
 	)
-	cropped_obs_shape = (3*args.frame_stack, 84, 84)
+	cropped_obs_shape = (3*args.control_frame_stack, 84, 84)
+	cropped_ss_obs_shape = (3*args.control_frame_stack, 84, 84)
 	agent = make_agent(
 		obs_shape=cropped_obs_shape,
+		ss_obs_shape=cropped_ss_obs_shape,
 		action_shape=env.action_space.shape,
 		args=args
 	)

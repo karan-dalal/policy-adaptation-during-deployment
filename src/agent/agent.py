@@ -9,9 +9,10 @@ from agent.encoder import make_encoder
 LOG_FREQ = 10000
 
 
-def make_agent(obs_shape, action_shape, args):
+def make_agent(obs_shape, ss_obs_shape, action_shape, args):
     return SacSSAgent(
         obs_shape=obs_shape,
+        ss_obs_shape=ss_obs_shape,
         action_shape=action_shape,
         hidden_dim=args.hidden_dim,
         discount=args.discount,
@@ -247,6 +248,7 @@ class SacSSAgent(object):
     def __init__(
         self,
         obs_shape,
+        ss_obs_shape,
         action_shape,
         hidden_dim=256,
         discount=0.99,
@@ -322,7 +324,7 @@ class SacSSAgent(object):
 
         if use_rot or use_inv:
             self.ss_encoder = make_encoder(
-                obs_shape, encoder_feature_dim, num_layers,
+                ss_obs_shape, encoder_feature_dim, num_layers,
                 num_filters, num_shared_layers
             ).cuda()
             self.ss_encoder.copy_conv_weights_from(self.critic.encoder, num_shared_layers)
