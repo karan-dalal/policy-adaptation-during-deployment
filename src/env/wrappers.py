@@ -16,7 +16,7 @@ def make_pad_env(
 		task_name,
 		seed=0,
 		episode_length=1000,
-		frame_stack=3,
+		frame_stack=6,
 		action_repeat=4,
 		mode='train'
 	):
