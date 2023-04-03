@@ -27,8 +27,7 @@ def evaluate(env, agent, args, video, adapt=False):
 				batch_size=args.pad_batch_size
 			)
 		video.init(enabled=True)
-
-		obs_ss = env.reset()
+		obs = env.reset()
 		done = False
 		episode_reward = 0
 		losses = []
@@ -36,12 +35,10 @@ def evaluate(env, agent, args, video, adapt=False):
 		ep_agent.train()
 
 		while not done:
-			obs_control = obs_ss[-3:]
-			obs_ss_full = obs_ss
-
 			# Take step
+			obs_rl = obs[-9:]
 			with utils.eval_mode(ep_agent):
-				action = ep_agent.select_action(obs_control)
+				action = ep_agent.select_action(obs_rl)
 			next_obs, reward, done, _ = env.step(action)
 			episode_reward += reward
 			
@@ -50,7 +47,7 @@ def evaluate(env, agent, args, video, adapt=False):
 				if args.use_rot: # rotation prediction
 
 					# Prepare batch of cropped observations
-					batch_next_obs = utils.batch_from_obs(torch.Tensor(obs_ss_full).cuda(), batch_size=args.pad_batch_size)
+					batch_next_obs = utils.batch_from_obs(torch.Tensor(next_obs).cuda(), batch_size=args.pad_batch_size)
 					batch_next_obs = utils.random_crop(batch_next_obs)
 
 					# Adapt using rotation prediction
@@ -59,7 +56,7 @@ def evaluate(env, agent, args, video, adapt=False):
 				if args.use_inv: # inverse dynamics model
 
 					# Prepare batch of observations
-					batch_obs = utils.batch_from_obs(torch.Tensor(obs_ss_full).cuda(), batch_size=args.pad_batch_size)
+					batch_obs = utils.batch_from_obs(torch.Tensor(obs).cuda(), batch_size=args.pad_batch_size)
 					batch_next_obs = utils.batch_from_obs(torch.Tensor(next_obs).cuda(), batch_size=args.pad_batch_size)
 					batch_action = torch.Tensor(action).cuda().unsqueeze(0).repeat(args.pad_batch_size, 1)
 
@@ -70,7 +67,7 @@ def evaluate(env, agent, args, video, adapt=False):
 
 					# Add observation to replay buffer for use as negative samples
 					# (only first argument obs is used, but we store all for convenience)
-					replay_buffer.add(obs_ss_full, action, reward, next_obs, True)
+					replay_buffer.add(obs, action, reward, next_obs, True)
 
 					# Prepare positive and negative samples
 					obs_anchor, obs_pos = get_curl_pos_neg(next_obs, replay_buffer)
@@ -79,7 +76,7 @@ def evaluate(env, agent, args, video, adapt=False):
 					losses.append(ep_agent.update_curl(obs_anchor, obs_pos, ema=True))
 
 			video.record(env, losses)
-			obs_ss = np.concatenate([obs_ss[1:], next_obs[np.newaxis]], axis=0)
+			obs = next_obs
 			step += 1
 
 		video.save(f'{args.mode}_pad_{i}.mp4' if adapt else f'{args.mode}_eval_{i}.mp4')
@@ -109,20 +106,18 @@ def main(args):
 
 	# Prepare agent
 	assert torch.cuda.is_available(), 'must have cuda enabled'
-	cropped_obs_shape = (3*args.control_frame_stack, 84, 84)
-	cropped_ss_obs_shape = (3*args.ss_frame_stack, 84, 84)
+	cropped_obs_shape = (3*args.frame_stack, 84, 84)
 	agent = make_agent(
 		obs_shape=cropped_obs_shape,
-		ss_obs_shape=cropped_ss_obs_shape,
 		action_shape=env.action_space.shape,
 		args=args
 	)
 	agent.load(model_dir, args.pad_checkpoint)
 
 	# Evaluate agent without PAD
-	print(f'Evaluating {args.work_dir} for {args.pad_num_episodes} episodes (mode: {args.mode})')
-	eval_reward = evaluate(env, agent, args, video)
-	print('eval reward:', int(eval_reward))
+	# print(f'Evaluating {args.work_dir} for {args.pad_num_episodes} episodes (mode: {args.mode})')
+	# eval_reward = evaluate(env, agent, args, video)
+	# print('eval reward:', int(eval_reward))
 
 	# Evaluate agent with PAD (if applicable)
 	pad_reward = None
@@ -136,7 +131,7 @@ def main(args):
 	results_fp = os.path.join(args.work_dir, f'pad_{args.mode}.pt')
 	torch.save({
 		'args': args,
-		'eval_reward': eval_reward,
+		# 'eval_reward': eval_reward,
 		'pad_reward': pad_reward
 	}, results_fp)
 	print('Saved results to', results_fp)

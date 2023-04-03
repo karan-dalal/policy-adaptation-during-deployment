@@ -9,10 +9,9 @@ from agent.encoder import make_encoder
 LOG_FREQ = 10000
 
 
-def make_agent(obs_shape, ss_obs_shape, action_shape, args):
+def make_agent(obs_shape, action_shape, args):
     return SacSSAgent(
         obs_shape=obs_shape,
-        ss_obs_shape=ss_obs_shape,
         action_shape=action_shape,
         hidden_dim=args.hidden_dim,
         discount=args.discount,
@@ -248,7 +247,6 @@ class SacSSAgent(object):
     def __init__(
         self,
         obs_shape,
-        ss_obs_shape,
         action_shape,
         hidden_dim=256,
         discount=0.99,
@@ -324,7 +322,7 @@ class SacSSAgent(object):
 
         if use_rot or use_inv:
             self.ss_encoder = make_encoder(
-                ss_obs_shape, encoder_feature_dim, num_layers,
+                obs_shape, encoder_feature_dim, num_layers,
                 num_filters, num_shared_layers
             ).cuda()
             self.ss_encoder.copy_conv_weights_from(self.critic.encoder, num_shared_layers)
@@ -338,7 +336,7 @@ class SacSSAgent(object):
             if use_inv:
                 self.inv = InvFunction(encoder_feature_dim, action_shape[0], hidden_dim).cuda()
                 self.inv.apply(weight_init)
-            
+
         # curl
         if use_curl:
             self.curl = CURL(obs_shape, encoder_feature_dim,
@@ -488,17 +486,24 @@ class SacSSAgent(object):
 
     def update_inv(self, obs, next_obs, action, L=None, step=None):
         assert obs.shape[-1] == 84 and next_obs.shape[-1] == 84
-
-        h = self.ss_encoder(obs)
-        h_next = self.ss_encoder(next_obs)
-
-        pred_action = self.inv(h, h_next)
-        inv_loss = F.mse_loss(pred_action, action)
-
+        size = obs.shape[1] // 3 - 2
+        obs_frames = [obs[:, 3*i:3*i+9, :, :] for i in range(size)]
+        next_obs_frames = [next_obs[:, 3*i:3*i+9, :, :] for i in range(size)]
+        # next_obs_frames = [next_obs[:, 3*i:3*i+9, :, :] for i in range(size-1, -1, -1)]
+        
+        inv_loss = 0
+        for i in range(size):
+            obs_batch = obs_frames[i]
+            next_obs_batch = next_obs_frames[i]
+            h = self.ss_encoder(obs_batch)
+            h_next = self.ss_encoder(next_obs_batch)
+            pred_action = self.inv(h, h_next)
+            inv_batch_loss = F.mse_loss(pred_action, action)
+            inv_loss += inv_batch_loss
+        
         self.encoder_optimizer.zero_grad()
         self.inv_optimizer.zero_grad()
         inv_loss.backward()
-
         self.encoder_optimizer.step()
         self.inv_optimizer.step()
 
