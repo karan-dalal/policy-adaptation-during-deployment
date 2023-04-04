@@ -33,15 +33,31 @@ def evaluate(env, agent, args, video, adapt=False):
 		losses = []
 		step = 0
 		ep_agent.train()
+		frames = []
+		actions = []
+		stack = 3
+				
+		# Add initial observations to frames list
+		for i in range(3):
+			frames.append(obs[3*i:3*i+3, :, :])
 
 		while not done:
 			# Take step
-			obs_rl = obs[-9:]
 			with utils.eval_mode(ep_agent):
-				action = ep_agent.select_action(obs_rl)
+				action = ep_agent.select_action(obs)
 			next_obs, reward, done, _ = env.step(action)
 			episode_reward += reward
+
+			# Add the most recent observation to the frames list	
+			frames.append(next_obs[6:9, :, :])
+
+			if len(frames) > stack + 1:
+				frames.pop(0)
 			
+			# Set observations
+			obs_extra = np.concatenate(frames[:-1], axis=0)
+			next_obs_extra = np.concatenate(frames[1:], axis=0)
+
 			# Make self-supervised update if flag is true
 			if adapt:
 				if args.use_rot: # rotation prediction
@@ -56,10 +72,19 @@ def evaluate(env, agent, args, video, adapt=False):
 				if args.use_inv: # inverse dynamics model
 
 					# Prepare batch of observations
-					batch_obs = utils.batch_from_obs(torch.Tensor(obs).cuda(), batch_size=args.pad_batch_size)
-					batch_next_obs = utils.batch_from_obs(torch.Tensor(next_obs).cuda(), batch_size=args.pad_batch_size)
+					batch_obs = utils.batch_from_obs(torch.Tensor(obs_extra).cuda(), batch_size=args.pad_batch_size)
+					batch_next_obs = utils.batch_from_obs(torch.Tensor(next_obs_extra).cuda(), batch_size=args.pad_batch_size)
 					batch_action = torch.Tensor(action).cuda().unsqueeze(0).repeat(args.pad_batch_size, 1)
+					
+					# Add action to actions list, remove, and concatenate
+					actions.append(batch_action)
+					if len(actions) > stack - 2:
+						actions.pop(0)
+					batch_action = torch.cat(actions, dim=1)
 
+					# print("Before Cut", batch_obs.shape, batch_next_obs.shape, batch_action.shape)
+					# print("--------The above sizes can be anything, multiples of 3----------")
+					
 					# Adapt using inverse dynamics prediction
 					losses.append(ep_agent.update_inv(utils.random_crop(batch_obs), utils.random_crop(batch_next_obs), batch_action))
 

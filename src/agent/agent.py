@@ -487,20 +487,20 @@ class SacSSAgent(object):
     def update_inv(self, obs, next_obs, action, L=None, step=None):
         assert obs.shape[-1] == 84 and next_obs.shape[-1] == 84
         size = obs.shape[1] // 3 - 2
-        obs_frames = [obs[:, 3*i:3*i+9, :, :] for i in range(size)]
-        next_obs_frames = [next_obs[:, 3*i:3*i+9, :, :] for i in range(size)]
-        # next_obs_frames = [next_obs[:, 3*i:3*i+9, :, :] for i in range(size-1, -1, -1)]
-        
         inv_loss = 0
         for i in range(size):
-            obs_batch = obs_frames[i]
-            next_obs_batch = next_obs_frames[i]
+            obs_batch = obs[:, 3*i:3*i+9, :, :]
+            next_obs_batch = next_obs[:, 3*i:3*i+9, :, :]
+            action_batch = action[:, i].reshape(-1,1)
+            # print("Post Cut", obs_batch.shape, next_obs_batch.shape, action_batch.shape)
+            # print("-------The above sizes should be 9, nothing more--------")
             h = self.ss_encoder(obs_batch)
             h_next = self.ss_encoder(next_obs_batch)
             pred_action = self.inv(h, h_next)
-            inv_batch_loss = F.mse_loss(pred_action, action)
-            inv_loss += inv_batch_loss
-        
+
+            inv_loss += F.mse_loss(pred_action, action_batch)
+
+        inv_loss /= size
         self.encoder_optimizer.zero_grad()
         self.inv_optimizer.zero_grad()
         inv_loss.backward()
