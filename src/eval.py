@@ -35,7 +35,7 @@ def evaluate(env, agent, args, video, adapt=False):
 		ep_agent.train()
 		frames = []
 		actions = []
-		stack = 3
+		stack = args.ss_stack
 				
 		# Add initial observations to frames list
 		for i in range(3):
@@ -125,7 +125,9 @@ def init_env(args):
 def main(args):
 	# Initialize environment
 	env = init_env(args)
-	model_dir = utils.make_dir(os.path.join(args.work_dir, 'model'))
+	#model_dir = utils.make_dir(os.path.join(args.work_dir, 'model'))
+	model_dir = utils.make_dir(os.path.join("logs/cartpole_swingup/inv/0", 'model'))
+	
 	video_dir = utils.make_dir(os.path.join(args.work_dir, 'video'))
 	video = VideoRecorder(video_dir if args.save_video else None, height=448, width=448)
 
